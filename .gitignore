@@ -1,0 +1,4 @@
+# Generated
+*.egg-info/
+env/
+*.pyc
