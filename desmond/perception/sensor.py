@@ -1,8 +1,13 @@
-import uuid
 import logging
+import time
+import uuid
 import zmq
 
+from desmond.perception import sensor_spec_pb2
 from desmond.network import ipaddr
+
+def time_usec():
+    return int(time.time()*1e6)
 
 class Sensor(object):
     DEFAULT_TOPIC = b"d"
@@ -28,13 +33,12 @@ class Sensor(object):
             self.address = "inproc://%s" % (str(uuid.uuid4()),)
             self.socket.bind(self.address)
 
-    def emit(self, data, topic=None):
+    def emit(self, proto, topic=None):
         """Publishes data on bound address."""
-        self.socket.send_string("%s %s" % (topic or Sensor.DEFAULT_TOPIC, data))
-
-    def emit_proto(self, proto, topic=None):
-        """Publishes data on bound address."""
-        self.socket.send(b"%s %s" % (topic or Sensor.DEFAULT_TOPIC, proto.SerializeToString()))
+        datum = sensor_spec_pb2.SensorDatum()
+        datum.time_usec = time_usec()
+        datum.payload.Pack(proto)
+        self.socket.send(b"%s %s" % (topic or Sensor.DEFAULT_TOPIC, datum.SerializeToString()))
 
     def __del__(self):
         if self.socket is not None:

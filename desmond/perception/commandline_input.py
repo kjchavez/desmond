@@ -12,8 +12,6 @@ class CommandlineInput(object):
             text = input(">>> ")
             if not text:
                 break
-            datum = sensor_spec_pb2.SensorDatum()
             payload = wrappers_pb2.StringValue()
             payload.value = text
-            datum.payload.Pack(payload)
-            self.sensor.emit_proto(datum)
+            self.sensor.emit(payload)

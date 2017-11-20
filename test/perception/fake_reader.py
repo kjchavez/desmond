@@ -10,6 +10,7 @@ spec.data_source.dtype = "desmond.perception.SensorDatum"
 def unwrap_print(datum):
     s = wrappers_pb2.StringValue()
     datum.payload.Unpack(s)
+    print(datum.time_usec)
     print(s)
 
 reader = SensorReader(spec, unwrap_print)
