@@ -5,6 +5,7 @@ import zmq
 from desmond.network import ipaddr
 
 class Sensor(object):
+    DEFAULT_TOPIC = b"d"
     def __init__(self, name, protocol="inproc"):
         self.name = name
         if protocol not in ("inproc", "tcp"):
@@ -12,6 +13,7 @@ class Sensor(object):
         self.protocol = protocol
         self.socket = None
         self.address = None
+        self.bind()
 
     def bind(self):
         context = zmq.Context.instance()
@@ -25,6 +27,14 @@ class Sensor(object):
         elif self.protocol == "inproc":
             self.address = "inproc://%s" % (str(uuid.uuid4()),)
             self.socket.bind(self.address)
+
+    def emit(self, data, topic=None):
+        """Publishes data on bound address."""
+        self.socket.send_string("%s %s" % (topic or Sensor.DEFAULT_TOPIC, data))
+
+    def emit_proto(self, proto, topic=None):
+        """Publishes data on bound address."""
+        self.socket.send(b"%s %s" % (topic or Sensor.DEFAULT_TOPIC, proto.SerializeToString()))
 
     def __del__(self):
         if self.socket is not None:
