@@ -4,6 +4,7 @@ import pyre
 import threading
 import uuid
 import zmq
+
 from desmond.network import message
 
 
@@ -24,7 +25,12 @@ class PerceptionService(object):
         poller.register(self.node.socket(), zmq.POLLIN)
         poller.register(sock, zmq.POLLIN)
         while not self._shutdown:
-            items = dict(poller.poll(500))
+            try:
+                items = dict(poller.poll(500))
+            except KeyboardInterrupt:
+                self.shutdown()
+                return
+
             if sock in items:
                 print(sock.recv())
             elif self.node.socket() in items:

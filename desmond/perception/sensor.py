@@ -4,7 +4,7 @@ import uuid
 import zmq
 import pyre
 
-from desmond.perception import sensor_spec_pb2
+from desmond.perception import sensor_data_pb2
 from desmond.network import ipaddr
 
 def time_usec():
@@ -44,7 +44,7 @@ class Sensor(object):
 
     def emit(self, proto):
         """Publishes data on bound address."""
-        datum = sensor_spec_pb2.SensorDatum()
+        datum = sensor_data_pb2.SensorDatum()
         datum.time_usec = time_usec()
         datum.payload.Pack(proto)
         self.socket.send(datum.SerializeToString())
