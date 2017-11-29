@@ -2,6 +2,7 @@ import logging
 import time
 import uuid
 import zmq
+import pyre
 
 from desmond.perception import sensor_spec_pb2
 from desmond.network import ipaddr
@@ -10,7 +11,8 @@ def time_usec():
     return int(time.time()*1e6)
 
 class Sensor(object):
-    DEFAULT_TOPIC = b"d"
+    # The topic should
+    DEFAULT_TOPIC = b"data"
     def __init__(self, name, protocol="inproc"):
         self.name = name
         if protocol not in ("inproc", "tcp"):
@@ -18,9 +20,9 @@ class Sensor(object):
         self.protocol = protocol
         self.socket = None
         self.address = None
-        self.bind()
+        self._bind()
 
-    def bind(self):
+    def _bind(self):
         context = zmq.Context.instance()
         self.socket = context.socket(zmq.PUB)
         if self.protocol == "tcp":
@@ -32,6 +34,13 @@ class Sensor(object):
         elif self.protocol == "inproc":
             self.address = "inproc://%s" % (str(uuid.uuid4()),)
             self.socket.bind(self.address)
+
+        # Make this service discoverable.
+        # We don't actually care to discover other nodes on the network
+        node = pyre.Pyre()
+        node.set_header("des-sensor", self.address)
+        node.start()
+
 
     def emit(self, proto, topic=None):
         """Publishes data on bound address."""
