@@ -4,7 +4,7 @@ from google.protobuf import wrappers_pb2
 
 class CommandlineInput(object):
     def __init__(self):
-        self.sensor = sensor.Sensor("commandline", protocol="tcp")
+        self.sensor = sensor.Sensor("commandline")
         print("Commandline sensor addr:", self.sensor.address)
 
     def run(self):

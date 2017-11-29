@@ -19,7 +19,7 @@ class SensorReader(object):
         while not self.stop_requested:
             # TODO(kjchavez): Set a timeout based on the spec!
             logging.debug("Waiting for sensor input on %s", address)
-            topic, datum_bytes = sock.recv().split(b" ", 1)
+            datum_bytes = sock.recv()
             datum = sensor_spec_pb2.SensorDatum()
             datum.ParseFromString(datum_bytes)
             self.callback(datum)
