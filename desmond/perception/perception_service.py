@@ -1,29 +1,53 @@
 """ Discovers sensors on the network and tracks their data. """
+import datetime
 import json
+import logging
 import pyre
 import threading
 import uuid
 import zmq
 
 from desmond.network import message
+from desmond.perception import sensor_data_pb2
+
+class ReceivedDatum(object):
+    def __init__(self, datum_bytes):
+        self.datum = sensor_data_pb2.SensorDatum()
+        if not self.datum.ParseFromString(datum_bytes):
+            logging.warning("Failed to parse SensorDatum")
+        self.type_url = self.datum.payload.type_url
+
+    @property
+    def time_usec(self):
+        return self.datum.time_usec
+
+    def deserialize_payload(self):
+        raise NotImplementedError
 
 
 class PerceptionService(object):
     def __init__(self):
         self._shutdown = False
+        self.ctx = zmq.Context.instance()
+        self.sources = {}
         t = threading.Thread(target=self.run)
         t.daemon = True
         t.start()
+
+    def _add_new_source(self, addr, poller):
+        sock = self.ctx.socket(zmq.SUB)
+        sock.setsockopt_string(zmq.SUBSCRIBE, "")
+        sock.connect(addr)
+        poller.register(sock, zmq.POLLIN)
+        self.sources[sock] = addr
 
     def run(self):
         self.node = pyre.Pyre()
         self.node.start()
         context = zmq.Context.instance()
-        sock = context.socket(zmq.SUB)
-        sock.setsockopt_string(zmq.SUBSCRIBE, "")
+
         poller = zmq.Poller()
         poller.register(self.node.socket(), zmq.POLLIN)
-        poller.register(sock, zmq.POLLIN)
         while not self._shutdown:
             try:
                 items = dict(poller.poll(500))
@@ -31,13 +55,18 @@ class PerceptionService(object):
                 self.shutdown()
                 return
 
-            if sock in items:
-                print(sock.recv())
-            elif self.node.socket() in items:
-                msg = message.PyreMessage(self.node.recv())
-                if msg.msg_type == message.PyreMessage.ENTER:
-                    sock.connect(msg.headers['dmd-sensor-addr'])
-                print(msg)
+            for ready in items:
+                if ready in self.sources:
+                    datum = ReceivedDatum(ready.recv())
+                    logging.info("[%s] Recieved %s from %s",
+                                 datetime.datetime.fromtimestamp(datum.time_usec/1e6),
+                                 datum.type_url, self.sources[ready])
+
+                elif ready == self.node.socket():
+                    msg = message.PyreMessage(self.node.recv())
+                    print(msg)
+                    if msg.msg_type == message.PyreMessage.ENTER:
+                        self._add_new_source(msg.headers['dmd-sensor-addr'], poller)
 
         self.node.stop()
 
@@ -45,6 +74,7 @@ class PerceptionService(object):
         self._shutdown = True
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     service = PerceptionService()
     input("Exit? ")
     service.shutdown()
