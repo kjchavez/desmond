@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package desmond.types;
+
+message Image {
+  bytes data = 1;
+
+  enum Encoding {
+    UNKNOWN = 0;
+    JPEG = 1;
+  }
+  Encoding encoding = 2;
+}
+
+message Text {
+  string value = 1;
+}
