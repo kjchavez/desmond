@@ -2,6 +2,7 @@
 import datetime
 import json
 import logging
+import os
 import pyre
 import threading
 import uuid
@@ -9,6 +10,7 @@ import zmq
 
 from desmond.network import message
 from desmond.perception import sensor_data_pb2
+from desmond.perception import sensor_logger
 
 class ReceivedDatum(object):
     def __init__(self, datum_bytes):
@@ -39,13 +41,11 @@ class SensorSpec(object):
 
 
 class PerceptionService(object):
-    def __init__(self):
+    def __init__(self, logdb=os.path.join(os.path.expanduser("~"),".desmond/sensorlogs.db")):
         self._shutdown = False
         self.ctx = zmq.Context.instance()
         self.sources = {}
-        t = threading.Thread(target=self.run)
-        t.daemon = True
-        t.start()
+        self.logdb = logdb
 
     def _add_new_source(self, spec, poller):
         sock = self.ctx.socket(zmq.SUB)
@@ -58,7 +58,7 @@ class PerceptionService(object):
         self.node = pyre.Pyre()
         self.node.start()
         context = zmq.Context.instance()
-
+        sensor_logs = sensor_logger.SensorLogger(db_name=self.logdb)
         poller = zmq.Poller()
         poller.register(self.node.socket(), zmq.POLLIN)
         while not self._shutdown:
@@ -71,6 +71,7 @@ class PerceptionService(object):
             for ready in items:
                 if ready in self.sources:
                     datum = ReceivedDatum(ready.recv())
+                    sensor_logs.write_datum(datum.datum, self.sources[ready])
                     logging.info("[%s] Recieved %s from %s",
                                  datetime.datetime.fromtimestamp(datum.time_usec/1e6),
                                  datum.type_url, self.sources[ready])
@@ -90,5 +91,4 @@ class PerceptionService(object):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     service = PerceptionService()
-    input("Exit? ")
-    service.shutdown()
+    service.run()
