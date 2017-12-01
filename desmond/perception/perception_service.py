@@ -24,6 +24,19 @@ class ReceivedDatum(object):
     def deserialize_payload(self):
         raise NotImplementedError
 
+class SensorSpec(object):
+    def __init__(self, name, address):
+        self.name = name
+        self.address = address
+
+    def __str__(self):
+        return "{0}@{1}".format(self.name, self.address)
+
+    @staticmethod
+    def from_headers(headers):
+        return SensorSpec(address=headers["dmd-sensor-addr"],
+                          name=headers["dmd-sensor-name"])
+
 
 class PerceptionService(object):
     def __init__(self):
@@ -34,12 +47,12 @@ class PerceptionService(object):
         t.daemon = True
         t.start()
 
-    def _add_new_source(self, addr, poller):
+    def _add_new_source(self, spec, poller):
         sock = self.ctx.socket(zmq.SUB)
         sock.setsockopt_string(zmq.SUBSCRIBE, "")
-        sock.connect(addr)
+        sock.connect(spec.address)
         poller.register(sock, zmq.POLLIN)
-        self.sources[sock] = addr
+        self.sources[sock] = spec
 
     def run(self):
         self.node = pyre.Pyre()
@@ -66,7 +79,8 @@ class PerceptionService(object):
                     msg = message.PyreMessage(self.node.recv())
                     print(msg)
                     if msg.msg_type == message.PyreMessage.ENTER:
-                        self._add_new_source(msg.headers['dmd-sensor-addr'], poller)
+                        self._add_new_source(SensorSpec.from_headers(msg.headers),
+                                             poller)
 
         self.node.stop()
 
