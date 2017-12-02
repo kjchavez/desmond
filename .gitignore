@@ -4,3 +4,6 @@ env/
 *.pyc
 *_pb2.py
 .ipynb_checkpoints/
+
+# Large files
+*.jpg
