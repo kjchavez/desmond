@@ -88,7 +88,14 @@ class PerceptionService(object):
     def shutdown(self):
         self._shutdown = True
 
+def cmdline_title(title):
+    s = "*"*80 + "\n"
+    s += "*" + title.center(78) + "*" + "\n"
+    s += "*"*80
+    return s
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     service = PerceptionService()
+    print(cmdline_title("Perception Service"))
     service.run()
