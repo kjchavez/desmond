@@ -23,9 +23,6 @@ class ReceivedDatum(object):
     def time_usec(self):
         return self.datum.time_usec
 
-    def deserialize_payload(self):
-        raise NotImplementedError
-
 class SensorSpec(object):
     def __init__(self, name, address):
         self.name = name
