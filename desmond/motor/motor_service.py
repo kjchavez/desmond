@@ -1,6 +1,7 @@
 import pyre
 import logging
 import threading
+import zmq
 
 from desmond.network.message import PyreMessage
 from desmond.motor.actuator import RemoteActuator, ActuatorSpec
@@ -9,6 +10,7 @@ class MotorService(object):
     """Provides simple access to actuators on the Desmond network."""
     def __init__(self):
         self.actuators = []
+        self.stop_requested = False  # should use zmq pipe?
         t = threading.Thread(target=self.discover)
         t.daemon = True
         t.start()
@@ -19,7 +21,12 @@ class MotorService(object):
     def discover(self):
         node = pyre.Pyre()
         node.start()
-        while True:
+        poller = zmq.Poller()
+        poller.register(node.socket(), zmq.POLLIN)
+        while not self.stop_requested:
+            items = dict(poller.poll(500))
+            if node.socket() not in items:
+                continue
             msg = PyreMessage(node.recv())
             logging.info(msg)
             if msg.msg_type == PyreMessage.ENTER:
@@ -27,3 +34,6 @@ class MotorService(object):
                 logging.info("Found new actuator!")
 
         node.stop()
+
+    def shutdown(self):
+        self.stop_requested = True

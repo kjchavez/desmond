@@ -32,6 +32,12 @@ class RemoteActuator(object):
         self.socket.send(command)
         return self.socket.recv()
 
+
+class Command(object):
+    def __init__(self, sender, payload):
+        self.sender = sender
+        self.payload = payload
+
 class Receiver(object):
     """ Actuator implementations should include a receiver to make it
         discoverable in the Desmond network and advertise its command
@@ -73,10 +79,19 @@ class Receiver(object):
 
     def recv(self):
         """ Returns an instance of CommandProto received from Desmond mesh. """
-        command_bytes = self.socket.recv()
+
+        identity = self.socket.recv()
+        assert self.socket.recv() == b''
+        data = self.socket.recv()
         # TODO(kjchavez): Parse as CommandProto. Note, we might receive it in JSON format
-        # if its a non-standard proto. Note2: the "identity" frame will be here!
-        return command_bytes
+        # if its a non-standard proto.
+        return Command(identity, data)
+
+    def send_ok(self, identity):
+        self.socket.send_multipart([identity, b'', b'OK'])
+
+    def send_error(self, identity, error):
+        self.socket.send_multipart([identity, b'', error])
 
     def __del__(self):
         self.socket.close()

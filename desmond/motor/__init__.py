@@ -1,1 +1,1 @@
-from motor_service import MotorService
+from .motor_service import MotorService
