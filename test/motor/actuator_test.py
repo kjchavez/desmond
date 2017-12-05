@@ -27,8 +27,9 @@ def smoke_test():
     text.value = "Hello World!"
     # For now... should actually be proto or json
     remote = service.actuators[0]
-    print("Remote CommandProto =", remote.command_type)
-    assert remote.command_type.decode('utf8') == types.Text.DESCRIPTOR.full_name
+    print("Remote CommandProto::descriptor()")
+    print(remote.command_descriptor)
+    assert remote.command_descriptor.name == types.Text.DESCRIPTOR.name
     rep = service.actuators[0].send(text.SerializeToString())
     assert rep.decode('utf8') == "OK"
     service.shutdown()

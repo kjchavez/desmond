@@ -4,13 +4,13 @@ from pyre import zhelper
 import uuid
 import zmq
 
+from google.protobuf.descriptor_pb2 import DescriptorProto
 from desmond.network import ipaddr
 
 class ActuatorSpec(object):
-    def __init__(self, name, address, command_proto):
+    def __init__(self, name, address):
         self.name = name
         self.address = address
-        self.command_proto = command_proto
 
     def __str__(self):
         return "{0}@{1}".format(self.name, self.address)
@@ -18,8 +18,7 @@ class ActuatorSpec(object):
     @staticmethod
     def from_headers(headers):
         return ActuatorSpec(address=headers[Receiver.HEADER_ACTUATOR_ADDR],
-                            name=headers[Receiver.HEADER_ACTUATOR_ADDR],
-                            command_proto=headers[Receiver.HEADER_ACTUATOR_CMD])
+                            name=headers[Receiver.HEADER_ACTUATOR_ADDR])
 
 class RemoteActuator(object):
     """ Used to send command to remote actuator. """
@@ -28,8 +27,11 @@ class RemoteActuator(object):
         context = zmq.Context.instance()
         self.socket = context.socket(zmq.REQ)
         self.socket.connect(spec.address)
-        self.command_type = self.send(RemoteActuator.MSG_REQUEST_PROTOCOL)
-        logging.info("RemoteActuator command protocol = %s", self.command_type)
+        self.socket.send(RemoteActuator.MSG_REQUEST_PROTOCOL)
+        descriptor_bytes = self.socket.recv()
+        self.command_descriptor = DescriptorProto()
+        self.command_descriptor.ParseFromString(descriptor_bytes)
+        logging.info("RemoteActuator command Descriptor: %s", self.command_descriptor)
 
     def send(self, command):
         """ Sends data either as proto or json. """
@@ -82,7 +84,6 @@ class Receiver(object):
         self.node = pyre.Pyre()
         self.node.set_header(Receiver.HEADER_ACTUATOR_NAME, self.name)
         self.node.set_header(Receiver.HEADER_ACTUATOR_ADDR, self.address)
-        self.node.set_header(Receiver.HEADER_ACTUATOR_CMD, self.CommandProto.DESCRIPTOR.full_name)
         self.node.start()
         logging.info("Started Receiver Pyre node.")
 
@@ -105,8 +106,10 @@ class Receiver(object):
                     continue
                 if frames[2] == RemoteActuator.MSG_REQUEST_PROTOCOL:
                     # Send this receiver's command protocol.
+                    descriptor = DescriptorProto()
+                    self.CommandProto.DESCRIPTOR.CopyToProto(descriptor)
                     self.socket.send_multipart([frames[0], b'',
-                                                bytes(self.CommandProto.DESCRIPTOR.full_name, 'utf8')])
+                                                descriptor.SerializeToString()])
                 else:
                     logging.debug("Forwarding command to command_pipe")
                     pipe.send_multipart(frames)
