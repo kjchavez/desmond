@@ -6,9 +6,10 @@ import logging
 from desmond.motor import actuator
 from desmond.motor import MotorService
 from desmond import types
+from test_command_pb2 import Outer
 
 def print_once():
-    receiver = actuator.Receiver("Printer", types.Text)
+    receiver = actuator.Receiver("Printer", Outer)
     cmd = receiver.recv_cmd()
     receiver.send_ok(cmd.sender)
     receiver.shutdown()
@@ -28,8 +29,8 @@ def smoke_test():
     # For now... should actually be proto or json
     remote = service.actuators[0]
     print("Remote CommandProto::descriptor()")
-    print(remote.command_descriptor)
-    assert remote.command_descriptor.name == types.Text.DESCRIPTOR.name
+    print(remote.command_def)
+    #assert remote.command_descriptor.name == types.Text.DESCRIPTOR.name
     rep = service.actuators[0].send(text.SerializeToString())
     assert rep.decode('utf8') == "OK"
     service.shutdown()

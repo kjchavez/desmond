@@ -16,3 +16,6 @@ select datetime(time_usec, 'unixepoch', 'localtime'), payload from sensordata;
 
 The Jupyter notebook as a dashboard will get out of hand pretty quickly
 unless we do something like http://pascalbugnion.net/blog/ipython-notebooks-and-git.html.
+
+https://developers.google.com/protocol-buffers/docs/reference/python/google.protobuf.descriptor.Descriptor-class
+

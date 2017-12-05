@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+import "google/protobuf/descriptor.proto";
+
+package desmond.network;
+
+message MessageDefinition {
+  string full_name = 1;
+  google.protobuf.DescriptorProto root_descriptor = 2;
+  map<string, google.protobuf.DescriptorProto> descriptors = 3;
+}

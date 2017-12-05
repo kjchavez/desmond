@@ -6,6 +6,8 @@ import zmq
 
 from google.protobuf.descriptor_pb2 import DescriptorProto
 from desmond.network import ipaddr
+from desmond import network
+
 
 class ActuatorSpec(object):
     def __init__(self, name, address):
@@ -29,9 +31,9 @@ class RemoteActuator(object):
         self.socket.connect(spec.address)
         self.socket.send(RemoteActuator.MSG_REQUEST_PROTOCOL)
         descriptor_bytes = self.socket.recv()
-        self.command_descriptor = DescriptorProto()
-        self.command_descriptor.ParseFromString(descriptor_bytes)
-        logging.info("RemoteActuator command Descriptor: %s", self.command_descriptor)
+        self.command_def = network.MessageDefinition()
+        self.command_def.ParseFromString(descriptor_bytes)
+        logging.info("RemoteActuator command def: %s", self.command_def)
 
     def send(self, command):
         """ Sends data either as proto or json. """
@@ -43,6 +45,26 @@ class Command(object):
     def __init__(self, sender, payload):
         self.sender = sender
         self.payload = payload
+
+
+def _get_nested_descriptors(descriptor, definition):
+    for field_desc in descriptor.fields:
+        if field_desc.message_type is not None and \
+           field_desc.message_type.full_name not in definition.descriptors:
+            #definition.descriptors[field_desc.message_type.full_name] = DescriptorProto()
+            field_desc.message_type.CopyToProto(
+                definition.descriptors[field_desc.message_type.full_name])
+            del definition.descriptors[field_desc.message_type.full_name].nested_type[:]
+            _get_nested_descriptors(field_desc.message_type, definition)
+
+def _get_message_def(ProtoType):
+    definition = network.MessageDefinition()
+    definition.full_name = ProtoType.DESCRIPTOR.full_name
+    ProtoType.DESCRIPTOR.CopyToProto(definition.root_descriptor)
+    del definition.root_descriptor.nested_type[:]
+    _get_nested_descriptors(ProtoType.DESCRIPTOR, definition)
+    return definition
+
 
 class Receiver(object):
     """ Actuator implementations should include a receiver to make it
@@ -106,10 +128,9 @@ class Receiver(object):
                     continue
                 if frames[2] == RemoteActuator.MSG_REQUEST_PROTOCOL:
                     # Send this receiver's command protocol.
-                    descriptor = DescriptorProto()
-                    self.CommandProto.DESCRIPTOR.CopyToProto(descriptor)
+                    message_def = _get_message_def(self.CommandProto)
                     self.socket.send_multipart([frames[0], b'',
-                                                descriptor.SerializeToString()])
+                                                message_def.SerializeToString()])
                 else:
                     logging.debug("Forwarding command to command_pipe")
                     pipe.send_multipart(frames)

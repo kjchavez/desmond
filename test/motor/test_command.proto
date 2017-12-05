@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package desmond.test;
+
+message Outer {
+  Inner inner = 1;
+  message Insider {
+    bool what = 1;
+  }
+  Insider insider = 2;
+}
+
+message Inner {
+  string stuff = 1;
+}

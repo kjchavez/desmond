@@ -1,0 +1,1 @@
+from .message_definition_pb2 import MessageDefinition
