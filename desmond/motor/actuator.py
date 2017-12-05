@@ -1,5 +1,6 @@
 import logging
 import pyre
+from pyre import zhelper
 import uuid
 import zmq
 
@@ -22,10 +23,13 @@ class ActuatorSpec(object):
 
 class RemoteActuator(object):
     """ Used to send command to remote actuator. """
+    MSG_REQUEST_PROTOCOL = b'GPB'
     def __init__(self, spec):
         context = zmq.Context.instance()
         self.socket = context.socket(zmq.REQ)
         self.socket.connect(spec.address)
+        self.command_type = self.send(RemoteActuator.MSG_REQUEST_PROTOCOL)
+        logging.info("RemoteActuator command protocol = %s", self.command_type)
 
     def send(self, command):
         """ Sends data either as proto or json. """
@@ -46,6 +50,7 @@ class Receiver(object):
     HEADER_ACTUATOR_NAME = "dmd-act-name"
     HEADER_ACTUATOR_ADDR = "dmd-act-addr"
     HEADER_ACTUATOR_CMD = "dmd-act-cmd"
+    _INTERNAL_STOP = b"$$STOP"
     def __init__(self, name, CommandProto, transport="tcp"):
         """
         Args:
@@ -61,6 +66,9 @@ class Receiver(object):
         self.name = name
         self.CommandProto = CommandProto
         context = zmq.Context.instance()
+        self.command_pipe = zhelper.zthread_fork(context, self.run, transport=transport)
+
+    def run(self, context, pipe, transport="tcp"):
         self.socket = context.socket(zmq.ROUTER)
         if transport == "tcp":
             port_selected = self.socket.bind_to_random_port('tcp://*', min_port=8001, max_port=9000,
@@ -76,23 +84,58 @@ class Receiver(object):
         self.node.set_header(Receiver.HEADER_ACTUATOR_ADDR, self.address)
         self.node.set_header(Receiver.HEADER_ACTUATOR_CMD, self.CommandProto.DESCRIPTOR.full_name)
         self.node.start()
+        logging.info("Started Receiver Pyre node.")
 
-    def recv(self):
+        poller = zmq.Poller()
+        poller.register(self.socket, zmq.POLLIN)
+        poller.register(pipe, zmq.POLLIN)
+        while True:
+            items = dict(poller.poll(500))
+            if pipe in items and items[pipe] == zmq.POLLIN:
+                frames = pipe.recv_multipart()
+                logging.debug("PIPE command: %s", frames)
+                if len(frames) == 1 and frames[0] == Receiver._INTERNAL_STOP:
+                    logging.info("Stopping receiver")
+                    break
+                self.socket.send_multipart(frames)
+            elif self.socket in items:
+                frames = self.socket.recv_multipart()
+                if len(frames) != 3 or frames[1] != b'':
+                    logging.error("Invalid multipart message")
+                    continue
+                if frames[2] == RemoteActuator.MSG_REQUEST_PROTOCOL:
+                    # Send this receiver's command protocol.
+                    self.socket.send_multipart([frames[0], b'',
+                                                bytes(self.CommandProto.DESCRIPTOR.full_name, 'utf8')])
+                else:
+                    logging.debug("Forwarding command to command_pipe")
+                    pipe.send_multipart(frames)
+
+        pipe.close()
+        self.socket.close()
+        self.node.stop()
+        logging.info("Exiting Receiver loop")
+
+    def recv_cmd(self):
         """ Returns an instance of CommandProto received from Desmond mesh. """
+        identity, _, data = self.command_pipe.recv_multipart()
 
-        identity = self.socket.recv()
-        assert self.socket.recv() == b''
-        data = self.socket.recv()
         # TODO(kjchavez): Parse as CommandProto. Note, we might receive it in JSON format
         # if its a non-standard proto.
         return Command(identity, data)
 
     def send_ok(self, identity):
-        self.socket.send_multipart([identity, b'', b'OK'])
+        self.command_pipe.send_multipart([identity, b'', b'OK'])
 
     def send_error(self, identity, error):
-        self.socket.send_multipart([identity, b'', error])
+        self.command_pipe.send_multipart([identity, b'', error])
+
+    def shutdown(self):
+        self.command_pipe.send(Receiver._INTERNAL_STOP)
+        self.command_pipe.close()
 
     def __del__(self):
-        self.socket.close()
-        self.node.stop()
+        try:
+            self.shutdown()
+        except:
+            pass
