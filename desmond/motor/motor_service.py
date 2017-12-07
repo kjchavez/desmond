@@ -1,6 +1,7 @@
 import pyre
 import logging
 import threading
+import time
 import zmq
 
 from desmond.network.message import PyreMessage
@@ -14,6 +15,9 @@ class MotorService(object):
         t = threading.Thread(target=self.discover)
         t.daemon = True
         t.start()
+        # Give the service a little time to discover nodes with live
+        # heartbeats.
+        time.sleep(0.5)
 
     def _add_actuator(self, remote):
         self.actuators.append(remote)

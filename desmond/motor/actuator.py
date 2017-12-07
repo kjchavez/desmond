@@ -10,6 +10,7 @@ from desmond.network import ipaddr
 from desmond import network
 
 
+# Do we need this??
 class ActuatorSpec(object):
     def __init__(self, name, address):
         self.name = name
@@ -21,13 +22,15 @@ class ActuatorSpec(object):
     @staticmethod
     def from_headers(headers):
         return ActuatorSpec(address=headers[Receiver.HEADER_ACTUATOR_ADDR],
-                            name=headers[Receiver.HEADER_ACTUATOR_ADDR])
+                            name=headers[Receiver.HEADER_ACTUATOR_NAME])
 
 
 class RemoteActuator(object):
     """ Used to send command to remote actuator. """
     MSG_REQUEST_PROTOCOL = b'GPB'
     def __init__(self, spec):
+        self.name = spec.name
+        self.address = spec.address
         context = zmq.Context.instance()
         self.socket = context.socket(zmq.REQ)
         self.socket.connect(spec.address)
@@ -41,6 +44,10 @@ class RemoteActuator(object):
         """ Sends data either as proto or json. """
         self.socket.send(command)
         return self.socket.recv()
+
+    def __str__(self):
+        return "{0}@{1}#{2}".format(self.name, self.address,
+                                    self.command_def.type_name)
 
 
 class Command(object):
@@ -150,11 +157,22 @@ class Receiver(object):
 
     def recv_cmd(self):
         """ Returns an instance of CommandProto received from Desmond mesh. """
-        identity, _, data = self.command_pipe.recv_multipart()
+        while True:
+            try:
+                identity, _, data = self.command_pipe.recv_multipart()
+                break
+            except zmq.error.Again:
+                pass
 
         # TODO(kjchavez): Parse as CommandProto. Note, we might receive it in JSON format
         # if its a non-standard proto.
-        return Command(identity, data)
+        command_proto = self.CommandProto()
+        try:
+            parsed = command_proto.ParseFromString(data)
+        except:
+            parsed = False
+
+        return Command(identity, command_proto if parsed else data)
 
     def send_ok(self, identity):
         self.command_pipe.send_multipart([identity, b'', b'OK'])
