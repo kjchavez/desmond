@@ -28,7 +28,6 @@ def actuate(name, payload):
         return
 
     for actuator in actuators:
-        click.echo(payload)
         unescaped = bytes(payload, 'utf8').decode('unicode_escape')
         status = actuator.send(bytes(unescaped, 'latin1'))
         click.echo(str(actuator))
