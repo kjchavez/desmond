@@ -5,6 +5,7 @@ import uuid
 import zmq
 
 from google.protobuf.descriptor_pb2 import DescriptorProto
+from google.protobuf import type_pb2
 from desmond.network import ipaddr
 from desmond import network
 
@@ -22,6 +23,7 @@ class ActuatorSpec(object):
         return ActuatorSpec(address=headers[Receiver.HEADER_ACTUATOR_ADDR],
                             name=headers[Receiver.HEADER_ACTUATOR_ADDR])
 
+
 class RemoteActuator(object):
     """ Used to send command to remote actuator. """
     MSG_REQUEST_PROTOCOL = b'GPB'
@@ -31,7 +33,7 @@ class RemoteActuator(object):
         self.socket.connect(spec.address)
         self.socket.send(RemoteActuator.MSG_REQUEST_PROTOCOL)
         descriptor_bytes = self.socket.recv()
-        self.command_def = network.MessageDefinition()
+        self.command_def = network.TypeDefinition()
         self.command_def.ParseFromString(descriptor_bytes)
         logging.info("RemoteActuator command def: %s", self.command_def)
 
@@ -47,23 +49,29 @@ class Command(object):
         self.payload = payload
 
 
-def _get_nested_descriptors(descriptor, definition):
+def _get_type_recursive(descriptor, definitions):
+    if descriptor.full_name in definitions:
+        return
+    type_ = type_pb2.Type()
+    definitions[descriptor.full_name] = type_
+    type_.name = descriptor.full_name
     for field_desc in descriptor.fields:
-        if field_desc.message_type is not None and \
-           field_desc.message_type.full_name not in definition.descriptors:
-            #definition.descriptors[field_desc.message_type.full_name] = DescriptorProto()
-            field_desc.message_type.CopyToProto(
-                definition.descriptors[field_desc.message_type.full_name])
-            del definition.descriptors[field_desc.message_type.full_name].nested_type[:]
-            _get_nested_descriptors(field_desc.message_type, definition)
+        field = type_.fields.add()
+        field.name = field_desc.name
+        field.kind = field_desc.type
+        if field_desc.message_type is not None:
+            field.type_url = "type.google_apis.com/"+field_desc.message_type.full_name
+            _get_type_recursive(field_desc.message_type, definitions)
 
-def _get_message_def(ProtoType):
-    definition = network.MessageDefinition()
-    definition.full_name = ProtoType.DESCRIPTOR.full_name
-    ProtoType.DESCRIPTOR.CopyToProto(definition.root_descriptor)
-    del definition.root_descriptor.nested_type[:]
-    _get_nested_descriptors(ProtoType.DESCRIPTOR, definition)
-    return definition
+
+def _get_type_def(ProtoType):
+    type_def = network.TypeDefinition()
+    type_def.type_name = ProtoType.DESCRIPTOR.full_name
+    definitions = {}
+    _get_type_recursive(ProtoType.DESCRIPTOR, definitions)
+    for d in definitions.values():
+        type_def.types.add().CopyFrom(d)
+    return type_def
 
 
 class Receiver(object):
@@ -128,9 +136,9 @@ class Receiver(object):
                     continue
                 if frames[2] == RemoteActuator.MSG_REQUEST_PROTOCOL:
                     # Send this receiver's command protocol.
-                    message_def = _get_message_def(self.CommandProto)
+                    type_def = _get_type_def(self.CommandProto)
                     self.socket.send_multipart([frames[0], b'',
-                                                message_def.SerializeToString()])
+                                                type_def.SerializeToString()])
                 else:
                     logging.debug("Forwarding command to command_pipe")
                     pipe.send_multipart(frames)

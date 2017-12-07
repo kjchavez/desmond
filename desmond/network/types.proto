@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+import "google/protobuf/type.proto";
+
+message TypeDefinition {
+  // Full name of the type we are defining. Should have an entry
+  // in the |types| list below.
+  string type_name = 1;
+
+  // All of the type definitions for this type and any
+  // nested types.
+  repeated google.protobuf.Type types = 2;
+}

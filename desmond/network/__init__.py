@@ -1,1 +1,1 @@
-from .message_definition_pb2 import MessageDefinition
+from .types_pb2 import TypeDefinition
