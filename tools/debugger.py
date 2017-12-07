@@ -1,6 +1,5 @@
 # Commandline tool to debug the Desmond network.
 import click
-import time
 
 from desmond.motor import MotorService
 
