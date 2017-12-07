@@ -6,6 +6,7 @@ import zmq
 
 from google.protobuf.descriptor_pb2 import DescriptorProto
 from google.protobuf import type_pb2
+from google.protobuf import json_format
 from desmond.network import ipaddr
 from desmond import network
 
@@ -167,10 +168,17 @@ class Receiver(object):
         # TODO(kjchavez): Parse as CommandProto. Note, we might receive it in JSON format
         # if its a non-standard proto.
         command_proto = self.CommandProto()
+        parsed = False
         try:
             parsed = command_proto.ParseFromString(data)
         except:
-            parsed = False
+            pass
+
+        try:
+            json_format.Parse(data, command_proto)
+            parsed = True
+        except json_format.ParseError:
+            pass
 
         return Command(identity, command_proto if parsed else data)
 
