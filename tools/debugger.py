@@ -13,7 +13,7 @@ def list_actuators():
     click.echo("Actuators")
     click.echo("="*80)
     for actuator in service.actuators:
-        click.echo("{0} @ {1}".format(actuator.name, actuator.address))
+        click.echo(str(actuator))
     service.shutdown()
 
 @cli.command()
