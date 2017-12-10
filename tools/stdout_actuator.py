@@ -2,8 +2,8 @@ from desmond.motor import actuator
 from desmond import types
 import zmq
 
-receiver = actuator.Receiver("stdout", types.Text)
-print("stdout Actuator")
+receiver = actuator.Receiver("Stdout", types.Text)
+print("Stdout Actuator")
 print("="*80)
 while True:
     cmd = receiver.recv_cmd()

@@ -22,6 +22,9 @@ class ActuatorSpec(object):
 
     @staticmethod
     def from_headers(headers):
+        if Receiver.HEADER_ACTUATOR_ADDR not in headers or \
+           Receiver.HEADER_ACTUATOR_NAME not in headers:
+            return None
         return ActuatorSpec(address=headers[Receiver.HEADER_ACTUATOR_ADDR],
                             name=headers[Receiver.HEADER_ACTUATOR_NAME])
 

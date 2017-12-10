@@ -34,10 +34,17 @@ class MotorService(object):
             msg = PyreMessage(node.recv())
             logging.info(msg)
             if msg.msg_type == PyreMessage.ENTER:
-                self._add_actuator(RemoteActuator(ActuatorSpec.from_headers(msg.headers)))
-                logging.info("Found new actuator!")
+                spec = ActuatorSpec.from_headers(msg.headers)
+                if spec:
+                    self._add_actuator(RemoteActuator(spec))
+                    logging.info("Found new actuator!")
 
         node.stop()
+
+    def actuate(self, name, payload):
+        actuators = [a for a in self.actuators if a.name == name]
+        results = [a.send(payload.SerializeToString()) for a in actuators]
+        return results
 
     def shutdown(self):
         self.stop_requested = True

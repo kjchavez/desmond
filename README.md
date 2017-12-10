@@ -19,3 +19,26 @@ unless we do something like http://pascalbugnion.net/blog/ipython-notebooks-and-
 
 https://developers.google.com/protocol-buffers/docs/reference/python/google.protobuf.descriptor.Descriptor-class
 
+
+## Hello World demo
+
+In two terminals fire up:
+
+```
+python tools/stdout_actuator.py
+```
+
+and
+
+```
+python tools/commandline_text_sensor.py
+```
+
+This is meant to simulate an actuator node and sensor, possibly on differen
+devices on the Desmond network.
+
+* Try entering some text in the **Commandline** sensor.
+* Nothing should happen in the **Stdout** actuator.
+* Now run `tools/echo.py` in a separate terminal (or in the background).
+* Type something else in the **Commandline** sensor.
+* Now it should show up at the **Stdout** actuator
