@@ -94,6 +94,8 @@ class DesmondNode(object):
         self.OutputType = OutputType
 
         # List of InputSpecs that are being used by this DesmondNode
+        # TODO(kjchavez): Make this thread safe! Important when many nodes are joining/leaving the
+        # network frequently.
         self._sources = []
 
         context = zmq.Context.instance()
