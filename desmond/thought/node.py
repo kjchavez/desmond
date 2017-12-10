@@ -90,6 +90,7 @@ class DesmondNode(object):
             self.address = "inproc://%s" % (str(uuid.uuid4()),)
             publisher.bind(self.address)
 
+        logging.info("Starting DesmondNode: %s", self.name)
         node = pyre.Pyre()
         node.set_header(DesmondNode.HEADER_OUTPUT_NAME, self.name)
         node.set_header(DesmondNode.HEADER_OUTPUT_ADDR, self.address)
