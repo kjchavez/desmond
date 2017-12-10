@@ -48,6 +48,23 @@ class InputManager(object):
 
 
 class DesmondNode(object):
+    """Core processing node in Desmond network.
+
+    A single node aggregates any number of inputs from the network and
+    publishes a single output type. A DesmondNode registers on datatypes
+    that it wishes to process, not specific sources of that datatype.
+
+    Example:
+
+        node = DesmondNode("MyNode", [types.Foo, types.Bar], types.Baz)
+
+    Such a node will receive all Foos and Bars that are published on the
+    Desmond network and may publish Baz to the network.
+
+    Nit. Prefer to use CamelCase node names to mirror class naming convention
+    in this project.
+    """
+
     # Headers that are broadcast by this node for others to discover.
     # Example: "Echo"
     HEADER_OUTPUT_NAME = "dmd-name"
