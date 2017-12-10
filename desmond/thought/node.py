@@ -2,6 +2,7 @@ import logging
 import uuid
 import zmq
 import pyre
+from google.protobuf import empty_pb2
 
 from pyre import zhelper
 from desmond.network import ipaddr, message
@@ -81,6 +82,9 @@ class DesmondNode(object):
             if not hasattr(i, 'ParseFromString'):
                 raise ValueError("All input types must implement 'ParseFromString' (e.g. protocol"
                                  " buffer)")
+        if OutputType is None:
+            OutputType = empty_pb2.Empty
+
         if not hasattr(OutputType, "SerializeToString"):
             raise ValueError("OutputType must implement 'SerializeToString' (e.g. protocol buffer)")
 
@@ -88,8 +92,16 @@ class DesmondNode(object):
         self.inputs = inputs
         self.inputs_by_name = {bytes(i.DESCRIPTOR.full_name, 'latin1'): i for i in inputs}
         self.OutputType = OutputType
+
+        # List of InputSpecs that are being used by this DesmondNode
+        self._sources = []
+
         context = zmq.Context.instance()
         self.pipe = zhelper.zthread_fork(context, self.run, transport=transport)
+
+    @property
+    def sources(self):
+        return self._sources
 
     def run(self, context, pipe, transport="tcp"):
         """Maintains pyre node and other zmq sockets used to receive inputs and publish output.
@@ -141,6 +153,7 @@ class DesmondNode(object):
                 if pm.msg_type == message.PyreMessage.ENTER:
                     logging.info("New node discovered.")
                     input_manager.add_input(pm.headers, context, poller)
+                    self._sources = input_manager.inputs.values()
 
             else:
                 for sock in input_manager.inputs:

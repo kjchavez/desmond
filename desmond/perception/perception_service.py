@@ -1,5 +1,6 @@
 """ Discovers sensors on the network and tracks their data. """
 import datetime
+import time
 import json
 import logging
 import os
@@ -11,6 +12,7 @@ import zmq
 from desmond.network import message
 from desmond.perception import sensor_data_pb2
 from desmond.perception import sensor_logger
+from desmond.thought import DesmondNode
 
 class ReceivedDatum(object):
     def __init__(self, datum_bytes):
@@ -40,47 +42,31 @@ class SensorSpec(object):
 class PerceptionService(object):
     def __init__(self, logdb=os.path.join(os.path.expanduser("~"),".desmond/sensorlogs.db")):
         self._shutdown = False
-        self.ctx = zmq.Context.instance()
-        self.sources = {}
         self.logdb = logdb
-
-    def _add_new_source(self, spec, poller):
-        sock = self.ctx.socket(zmq.SUB)
-        sock.setsockopt_string(zmq.SUBSCRIBE, "")
-        sock.connect(spec.address)
-        poller.register(sock, zmq.POLLIN)
-        self.sources[sock] = spec
+        self.node = None
+        t = threading.Thread(target=self.run)
+        t.daemon = True
+        t.start()
+        time.sleep(0.5)
 
     def run(self):
-        self.node = pyre.Pyre()
-        self.node.start()
-        context = zmq.Context.instance()
+        self.node = DesmondNode("PerceptionService", [sensor_data_pb2.SensorDatum], None)
         sensor_logs = sensor_logger.SensorLogger(db_name=self.logdb)
-        poller = zmq.Poller()
-        poller.register(self.node.socket(), zmq.POLLIN)
         while not self._shutdown:
-            try:
-                items = dict(poller.poll(500))
-            except KeyboardInterrupt:
-                self.shutdown()
-                return
+            datum = self.node.recv_or_none()
+            if datum is None:
+                continue
+            spec = SensorSpec("", "")
+            sensor_logs.write_datum(datum, spec)
+            logging.info("[%s] Recieved %s from %s",
+                         datetime.datetime.fromtimestamp(datum.time_usec/1e6),
+                         datum.payload.type_url, spec)
 
-            for ready in items:
-                if ready in self.sources:
-                    datum = ReceivedDatum(ready.recv())
-                    sensor_logs.write_datum(datum.datum, self.sources[ready])
-                    logging.info("[%s] Recieved %s from %s",
-                                 datetime.datetime.fromtimestamp(datum.time_usec/1e6),
-                                 datum.type_url, self.sources[ready])
+        self.node.shutdown()
 
-                elif ready == self.node.socket():
-                    msg = message.PyreMessage(self.node.recv())
-                    print(msg)
-                    if msg.msg_type == message.PyreMessage.ENTER:
-                        self._add_new_source(SensorSpec.from_headers(msg.headers),
-                                             poller)
-
-        self.node.stop()
+    @property
+    def sources(self):
+        return self.node.sources if self.node else []
 
     def shutdown(self):
         self._shutdown = True
