@@ -1,10 +1,12 @@
 import logging
 import uuid
+import sys
 import zmq
 import pyre
 from google.protobuf import empty_pb2
 
 from pyre import zhelper
+import desmond
 from desmond.network import ipaddr, message
 
 class InputSpec(object):
@@ -12,6 +14,9 @@ class InputSpec(object):
         self.name = name
         self.addr = bytes(addr, 'latin1')
         self.dtype = bytes(dtype, 'latin1')
+
+    def __str__(self):
+        return "{0}@{1}#{2}".format(self.name, self.addr, self.dtype)
 
 class InputManager(object):
     def __init__(self, accepted_types):
@@ -144,7 +149,8 @@ class DesmondNode(object):
                     logging.info("Shutting down node")
                     break
                 elif msg[0] == DesmondNode.MSG_EMIT:
-                    logging.debug("Emitting data.")
+                    logging.debug("Emitting data (size = %d bytes)",
+                            len(msg[1]))
                     publisher.send(msg[1])
                 else:
                     logging.info("Unknown internal command ignored")
@@ -163,7 +169,12 @@ class DesmondNode(object):
                         msg = sock.recv()
                         spec = input_manager.inputs[sock]
                         logging.debug("Received input from %s", spec.addr)
-                        pipe.send_multipart([spec.dtype, spec.addr, msg])
+                        try:
+                            pipe.send_multipart([spec.dtype, spec.addr, msg])
+                        except zmq.error.Again:
+                            logging.warning("Dropping input from %s. "
+                            "EAGAIN, likely due to slow blocking code.",
+                            str(spec))
 
         pipe.close()
         publisher.close()
@@ -197,10 +208,22 @@ class DesmondNode(object):
         while True:
             dtype, addr, payload = self.pipe.recv_multipart()
             proto = self.inputs_by_name[dtype]()
-            if proto.ParseFromString(payload):
+            logging.debug("Parsing as: %s", proto.DESCRIPTOR.full_name)
+            try:
+                proto.ParseFromString(payload)
                 return proto
+            except message.DecodeError:
+                pass
+
             # Otherwise things are broken...
-            logging.warning("Invalid payload received for dtype: %s", dtype)
+            logging.warning("Invalid payload (size=%d bytes) received for dtype: %s",
+                            len(payload), dtype)
+            if desmond.DEBUG_MODE:
+                with open("/tmp/desmond-payload-error.txt", 'wb') as fp:
+                    fp.write(payload)
+                print("Payload saved to /tmp/desmond-payload-error.txt")
+                self.shutdown()
+                sys.exit(1)
 
     def recv_or_none(self):
         """Similar to DesmondNode.recv, except returns None rather than raising zmq.error.Again
