@@ -43,6 +43,15 @@ def get_run_state():
     return get_yaml_file(RUN_STATE_FILENAME)
 
 
+def check_pid(pid):
+    """ Check For the existence of a unix pid. """
+    try:
+        os.kill(pid, 0)
+    except OSError as e:
+        return e.errno != 3
+    else:
+        return True
+
 @click.group()
 def cli():
     if not os.path.exists(VAR_DIR):
@@ -106,11 +115,13 @@ def start(dry_run):
         if dry_run:
             print("Would execute:", config['launcher'], config['executable'])
             continue
+
         if name in run_state:
-            # TODO(kjchavez): Check if this is *actually* still running and
-            # maybe restart.
-            print("Node %s is already running. Ignoring." % name)
-            continue
+            if check_pid(run_state[name]['pid']):
+                print("Node %s is already running. Ignoring." % name)
+                continue
+            else:
+                print("Node seems to have died. Restarting...")
 
         # Probably stdout and stderr should go to debug logs rather than NULL.
         p = subprocess.Popen([config['launcher'], config['executable']],
