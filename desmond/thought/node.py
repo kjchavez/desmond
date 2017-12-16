@@ -1,6 +1,8 @@
 import logging
+import collections
 import uuid
 import sys
+import random
 import zmq
 import pyre
 from google.protobuf import empty_pb2
@@ -53,6 +55,31 @@ class InputManager(object):
         return True
 
 
+BufferedMessage = collections.namedtuple('BufferedMessage', ['dtype', 'addr', 'msg'])
+
+class NodeStats(object):
+    def __init__(self):
+        self.received = {}
+        self.dropped = {}
+
+    def increment_received(self, key):
+        self.received[key] = self.received.get(key, 0) + 1
+
+    def increment_dropped(self, key):
+        self.dropped[key] = self.dropped.get(key, 0) + 1
+
+    def drop_rate(self):
+        """ Returns drop rate per data type. """
+        drop_rate = {}
+        for key in self.received:
+            drop_rate[key] = float(self.dropped.get(key, 0)) / self.received[key]
+
+        return drop_rate
+
+
+def with_prob(x):
+    return random.random() < x
+
 class DesmondNode(object):
     """Core processing node in Desmond network.
 
@@ -82,6 +109,8 @@ class DesmondNode(object):
     # Messages send via an inproc pipe from application code to DesmondNode main loop.
     MSG_SHUTDOWN = b"_$STOP"
     MSG_EMIT = b"_$EMIT"
+    MSG_RECV = b"_$RCV"
+    MSG_NO_DATA = b"_$ND"
     def __init__(self, name, inputs, OutputType, transport="tcp"):
         for i in inputs:
             if not hasattr(i, 'ParseFromString'):
@@ -136,10 +165,14 @@ class DesmondNode(object):
         poller = zmq.Poller()
         poller.register(node.socket(), zmq.POLLIN)
         poller.register(pipe, zmq.POLLIN)
-
+        msg_buffer = None
+        stats = NodeStats()
         input_manager = InputManager(self.inputs)
         while True:
             items = dict(poller.poll(500))
+            if with_prob(0.01):
+                logging.info("Drop rate: %s", stats.drop_rate())
+
             if pipe in items and items[pipe] == zmq.POLLIN:
                 msg = pipe.recv_multipart()
                 if not msg:
@@ -152,6 +185,18 @@ class DesmondNode(object):
                     logging.debug("Emitting data (size = %d bytes)",
                             len(msg[1]))
                     publisher.send(msg[1])
+                elif msg[0] == DesmondNode.MSG_RECV:
+                    logging.debug("Requesting next stimulus")
+                    if msg_buffer is not None:
+                        pipe.send_multipart([msg_buffer.dtype, msg_buffer.addr,
+                                             msg_buffer.msg])
+                        # Clear the msg buffer so we won't recv this data
+                        # again.
+                        msg_buffer = None
+                    else:
+                        # NOTE(kjchavez): Alternatively, we could have this
+                        # block until new inputs are available.
+                        pipe.send_multipart([DesmondNode.MSG_NO_DATA])
                 else:
                     logging.info("Unknown internal command ignored")
 
@@ -169,17 +214,20 @@ class DesmondNode(object):
                         msg = sock.recv()
                         spec = input_manager.inputs[sock]
                         logging.debug("Received input from %s", spec.addr)
-                        try:
-                            pipe.send_multipart([spec.dtype, spec.addr, msg])
-                        except zmq.error.Again:
-                            logging.warning("Dropping input from %s. "
-                            "EAGAIN, likely due to slow blocking code.",
-                            str(spec))
+                        if msg_buffer is not None:
+                            stats.increment_dropped(spec.dtype)
+                            logging.debug("Dropped an input stimulus of type: "
+                                          "%s", spec.dtype)
+                        msg_buffer = BufferedMessage(dtype=spec.dtype,
+                                                     addr=spec.addr,
+                                                     msg=msg)
+                        stats.increment_received(spec.dtype)
 
         pipe.close()
         publisher.close()
         node.stop()
         logging.info("Exiting Receiver loop")
+        logging.info("Drop Rates: %s", stats.drop_rate())
 
     def shutdown(self):
         """Terminates the discovery/handling loop of the node."""
@@ -206,7 +254,13 @@ class DesmondNode(object):
             zmq.error.Again if no data is available
         """
         while True:
-            dtype, addr, payload = self.pipe.recv_multipart()
+            self.pipe.send_multipart([DesmondNode.MSG_RECV])
+            frames = self.pipe.recv_multipart()
+            if frames[0] == DesmondNode.MSG_NO_DATA:
+                logging.debug("No inputs available.")
+                continue;
+
+            dtype, addr, payload = frames
             proto = self.inputs_by_name[dtype]()
             logging.debug("Parsing as: %s", proto.DESCRIPTOR.full_name)
             try:
