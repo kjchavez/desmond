@@ -5,6 +5,7 @@ from __future__ import print_function
 import click
 import os
 import subprocess
+import json
 import yaml
 
 VAR_DIR = os.path.join(os.path.expanduser('~'), 'var', 'desmond')
@@ -139,7 +140,12 @@ def stop():
 @cli.command()
 def show():
     """ Shows all nodes that are running. """
-    pass
+    nodes = get_nodes()
+    run_state = get_run_state()
+    print("== Installed ==")
+    print(json.dumps(nodes, indent=2))
+    print("== Run State ==")
+    print(json.dumps(run_state, indent=2))
 
 if __name__ == "__main__":
     cli()
