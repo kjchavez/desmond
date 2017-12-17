@@ -2,13 +2,16 @@ import logging
 import collections
 import uuid
 import sys
+import time
 import random
 import zmq
 import pyre
 from google.protobuf import empty_pb2
+import google.protobuf.message as gmessage
 
 from pyre import zhelper
 import desmond
+from desmond import types
 from desmond.network import ipaddr, message
 
 class InputSpec(object):
@@ -79,6 +82,9 @@ class NodeStats(object):
 
 def with_prob(x):
     return random.random() < x
+
+def now_usec():
+    return int(time.time()*1e6)
 
 class DesmondNode(object):
     """Core processing node in Desmond network.
@@ -201,6 +207,7 @@ class DesmondNode(object):
                     logging.info("Unknown internal command ignored")
 
             elif node.socket() in items:
+                # TODO(kjchavez): Replace this with PyreEvent from pyre lib.
                 pm = message.PyreMessage(node.recv())
                 logging.debug("Received message from Pyre node")
                 if pm.msg_type == message.PyreMessage.ENTER:
@@ -233,16 +240,19 @@ class DesmondNode(object):
         """Terminates the discovery/handling loop of the node."""
         self.pipe.send_multipart([DesmondNode.MSG_SHUTDOWN])
 
-    def publish(self, data):
+    def publish(self, output):
         """Emits instance of self.OutputType to Desmond network.
 
         Arguments:
-            data: instance of self.OutputType.
+            output: instance of self.OutputType.
         """
 
-        if not isinstance(data, self.OutputType):
+        if not isinstance(output, self.OutputType):
             raise ValueError("data must be of type %s" % self.OutputType)
-        self.pipe.send_multipart([DesmondNode.MSG_EMIT, data.SerializeToString()])
+
+        datum = types.Datum(time_usec=now_usec())
+        datum.payload.Pack(output)
+        self.pipe.send_multipart([DesmondNode.MSG_EMIT, datum.SerializeToString()])
 
     def recv(self):
         """Return input of one of the registered input types.
@@ -260,13 +270,18 @@ class DesmondNode(object):
                 logging.debug("No inputs available.")
                 continue;
 
-            dtype, addr, payload = frames
-            proto = self.inputs_by_name[dtype]()
-            logging.debug("Parsing as: %s", proto.DESCRIPTOR.full_name)
+            dtype, addr, datum_bytes = frames
             try:
-                proto.ParseFromString(payload)
+                datum = types.Datum()
+                datum.ParseFromString(datum_bytes)
+                proto = self.inputs_by_name[dtype]()
+                if not datum.payload.Unpack(proto):
+                    logging.warning("Failed to extract %s from datum", dtype)
+                    continue
+
                 return proto
-            except message.DecodeError:
+
+            except gmessage.DecodeError:
                 pass
 
             # Otherwise things are broken...
