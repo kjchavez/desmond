@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+
+package desmond.types;
+
+message Datum {
+  // Unix timestamp when the datum was generated.
+  int64 time_usec = 1;
+
+  // Structured data payload. Must match the type advertised
+  // by the DesmondNode emitting it. Otherwise, the Datum may
+  // be rejected.
+  google.protobuf.Any payload = 2;
+}
