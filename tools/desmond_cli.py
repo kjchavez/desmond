@@ -12,6 +12,7 @@ VAR_DIR = os.path.join(os.path.expanduser('~'), 'var', 'desmond')
 NODES_FILENAME = os.path.join(VAR_DIR, "nodes.yaml")
 WELL_KNOWN_LAUNCHERS = ['python','python2', 'python3']
 RUN_STATE_FILENAME = os.path.join(VAR_DIR, '_run_state.yaml')
+DEBUG_LOGDIR = os.path.join("/tmp", "desmond", "logs")
 
 def make_if_not_exists(filename):
     dirname = os.path.dirname(filename)
@@ -107,10 +108,17 @@ def remove_all(force):
 
 @cli.command()
 @click.option("--dry-run", is_flag=True)
-def start(dry_run):
+@click.option("--nologs", is_flag=True)
+def start(dry_run, nologs):
+    if nologs:
+        print("Debug logs are suppressed.")
+    else:
+        if not os.path.isdir(DEBUG_LOGDIR):
+            os.makedirs(DEBUG_LOGDIR)
+        print("Debug logs going to %s" % DEBUG_LOGDIR)
+
     nodes = get_nodes()
     run_state = get_run_state()
-    FNULL = open(os.devnull, 'w')
     for name, config in nodes.items():
         if dry_run:
             print("Would execute:", config['launcher'], config['executable'])
@@ -123,9 +131,14 @@ def start(dry_run):
             else:
                 print("Node seems to have died. Restarting...")
 
-        # Probably stdout and stderr should go to debug logs rather than NULL.
+        stdout_fname = os.devnull if nologs \
+                      else os.path.join(DEBUG_LOGDIR, name + '.stdout')
+        stdout = open(stdout_fname, 'w')
+        stderr_fname = os.devnull if nologs \
+                      else os.path.join(DEBUG_LOGDIR, name + '.stderr')
+        stderr = open(stderr_fname, 'w')
         p = subprocess.Popen([config['launcher'], config['executable']],
-                             stdout=FNULL, stderr=FNULL)
+                             stdout=stdout, stderr=stderr)
         run_state[name] = {'pid': p.pid}
         save_yaml(run_state, RUN_STATE_FILENAME)
         print("Running %s with pid=%d" % (name, p.pid))
