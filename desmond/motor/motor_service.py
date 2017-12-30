@@ -41,6 +41,13 @@ class MotorService(object):
 
         node.stop()
 
+    def get(self, name):
+        actuators = [a for a in self.actuators if a.name == name]
+        if not actuators:
+            return None
+
+        return actuators[0]
+
     def actuate(self, name, payload):
         actuators = [a for a in self.actuators if a.name == name]
         results = [a.send(payload.SerializeToString()) for a in actuators]

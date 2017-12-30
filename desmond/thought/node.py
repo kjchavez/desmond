@@ -294,12 +294,16 @@ class DesmondNode(object):
                 self.shutdown()
                 sys.exit(1)
 
-    def recv_or_none(self):
+    def recv_or_none(self, timeout=100):
         """Similar to DesmondNode.recv, except returns None rather than raising zmq.error.Again
+
+        Arguments:
+            timeout: maximum wait time in milliseconds.
 
         Returns:
             instance of one of self.input dtypes or None
         """
+        # TODO(kjchavez): Enforce the timeout.
         try:
             return self.recv()
         except zmq.error.Again:
